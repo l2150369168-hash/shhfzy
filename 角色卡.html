@@ -1,0 +1,1466 @@
+我来重新设计这个系统。由于PNG的OCR有技术限制，我们改用**手动输入模式**，但增强**世界书分类、提示词管理**和**高级设置**功能：
+
+```html
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>暗域·角色卡库</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', 'Microsoft YaHei', monospace;
+            background: linear-gradient(135deg, #0a0e27 0%, #1a1a2e 50%, #16213e 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(139, 0, 139, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(25, 25, 112, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* ============ 通知 ============ */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: linear-gradient(135deg, #8b00ff, #ff1493);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(139, 0, 139, 0.5);
+            z-index: 1000;
+            display: none;
+            animation: slideIn 0.3s ease;
+        }
+
+        .notification.show {
+            display: block;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        /* ============ 登录 ============ */
+        .login-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            z-index: 10;
+        }
+
+        .login-box {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border: 2px solid rgba(139, 0, 139, 0.5);
+            border-radius: 15px;
+            padding: 50px;
+            width: 90%;
+            max-width: 400px;
+            box-shadow: 0 0 60px rgba(139, 0, 139, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .login-box::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(139, 0, 139, 0.2), transparent);
+            animation: shimmer 3s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { left: -100%; }
+            100% { left: 100%; }
+        }
+
+        .login-title {
+            text-align: center;
+            margin-bottom: 40px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .login-title h1 {
+            font-size: 32px;
+            background: linear-gradient(135deg, #8b00ff, #ff1493);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+            letter-spacing: 2px;
+        }
+
+        .login-title p {
+            color: #999;
+            font-size: 11px;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+
+        .input-group {
+            margin-bottom: 25px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #bb86fc;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 1px;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 12px 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(139, 0, 139, 0.3);
+            border-radius: 8px;
+            color: #e0e0e0;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: #8b00ff;
+            background: rgba(139, 0, 139, 0.1);
+            box-shadow: 0 0 15px rgba(139, 0, 139, 0.3);
+        }
+
+        .login-btn {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #8b00ff, #ff1493);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 20px rgba(139, 0, 139, 0.5);
+            letter-spacing: 1px;
+        }
+
+        .login-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0 30px rgba(139, 0, 139, 0.7);
+        }
+
+        .error-message {
+            color: #ff6b6b;
+            font-size: 12px;
+            margin-top: 10px;
+            text-align: center;
+            display: none;
+        }
+
+        /* ============ 主界面 ============ */
+        .main-container {
+            display: none;
+            z-index: 5;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        .toolbar {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border-bottom: 2px solid rgba(139, 0, 139, 0.3);
+            padding: 20px 30px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .toolbar-content {
+            max-width: 1600px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .toolbar-left {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .toolbar-title {
+            font-size: 22px;
+            background: linear-gradient(135deg, #8b00ff, #ff1493);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-weight: bold;
+            letter-spacing: 2px;
+        }
+
+        .toolbar-btn {
+            background: rgba(139, 0, 139, 0.2);
+            border: 1px solid rgba(139, 0, 139, 0.5);
+            color: #bb86fc;
+            padding: 10px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            letter-spacing: 0.5px;
+        }
+
+        .toolbar-btn:hover {
+            background: rgba(139, 0, 139, 0.3);
+            box-shadow: 0 0 15px rgba(139, 0, 139, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .logout-btn {
+            background: rgba(255, 107, 107, 0.2);
+            border: 1px solid #ff6b6b;
+            color: #ff6b6b;
+            padding: 10px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 12px;
+        }
+
+        .logout-btn:hover {
+            background: rgba(255, 107, 107, 0.3);
+            box-shadow: 0 0 15px rgba(255, 107, 107, 0.3);
+        }
+
+        .content {
+            flex: 1;
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 40px 30px;
+            width: 100%;
+        }
+
+        .upload-area {
+            background: linear-gradient(135deg, rgba(139, 0, 139, 0.1), rgba(25, 25, 112, 0.1));
+            border: 2px dashed rgba(139, 0, 139, 0.5);
+            border-radius: 12px;
+            padding: 60px 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 40px;
+        }
+
+        .upload-area:hover,
+        .upload-area.dragover {
+            border-color: #8b00ff;
+            background: linear-gradient(135deg, rgba(139, 0, 139, 0.3), rgba(25, 25, 112, 0.2));
+            box-shadow: 0 0 30px rgba(139, 0, 139, 0.2);
+        }
+
+        .upload-area input {
+            display: none;
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+
+        .upload-text {
+            color: #bb86fc;
+            font-size: 16px;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+
+        .upload-hint {
+            color: #888;
+            font-size: 12px;
+        }
+
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 20px;
+        }
+
+        .card-item {
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            border: 1px solid rgba(139, 0, 139, 0.3);
+            border-radius: 10px;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+            position: relative;
+            cursor: pointer;
+        }
+
+        .card-item:hover {
+            border-color: #8b00ff;
+            box-shadow: 0 0 30px rgba(139, 0, 139, 0.4);
+            transform: translateY(-8px) scale(1.02);
+        }
+
+        .card-image-container {
+            width: 100%;
+            height: 220px;
+            overflow: hidden;
+            position: relative;
+            background: #000;
+        }
+
+        .card-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            transition: transform 0.3s ease;
+        }
+
+        .card-item:hover .card-image {
+            transform: scale(1.05);
+        }
+
+        .card-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .card-item:hover .card-overlay {
+            opacity: 1;
+        }
+
+        .card-overlay-btn {
+            background: linear-gradient(135deg, #8b00ff, #ff1493);
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .card-overlay-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .card-info {
+            padding: 15px;
+        }
+
+        .card-name {
+            color: #8b00ff;
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 13px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .card-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .card-btn {
+            flex: 1;
+            padding: 6px 8px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 11px;
+            transition: all 0.3s ease;
+        }
+
+        .download-btn {
+            background: rgba(139, 0, 139, 0.3);
+            color: #bb86fc;
+            border: 1px solid rgba(139, 0, 139, 0.5);
+        }
+
+        .delete-btn {
+            background: rgba(255, 107, 107, 0.2);
+            color: #ff6b6b;
+            border: 1px solid rgba(255, 107, 107, 0.5);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #888;
+            grid-column: 1 / -1;
+        }
+
+        /* ============ 模态框 ============ */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(5px);
+            overflow-y: auto;
+        }
+
+        .modal.show {
+            display: flex;
+            animation: modalFadeIn 0.3s ease;
+        }
+
+        @keyframes modalFadeIn {
+            from {
+                opacity: 0;
+                transform: scale(0.9);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .modal-content {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border: 2px solid rgba(139, 0, 139, 0.3);
+            border-radius: 15px;
+            max-width: 1000px;
+            width: 95%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 0 50px rgba(139, 0, 139, 0.3);
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            margin: auto;
+        }
+
+        .modal-image {
+            position: relative;
+        }
+
+        .modal-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 13px 0 0 13px;
+        }
+
+        .modal-info {
+            padding: 30px;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+        }
+
+        .modal-title {
+            font-size: 22px;
+            background: linear-gradient(135deg, #8b00ff, #ff1493);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-weight: bold;
+        }
+
+        .modal-close {
+            background: rgba(255, 107, 107, 0.2);
+            border: 1px solid rgba(255, 107, 107, 0.5);
+            color: #ff6b6b;
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        .edit-form {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-group label {
+            color: #bb86fc;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .form-group input,
+        .form-group textarea {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(139, 0, 139, 0.3);
+            border-radius: 6px;
+            color: #e0e0e0;
+            padding: 10px 12px;
+            font-size: 13px;
+            font-family: inherit;
+            transition: all 0.3s ease;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #8b00ff;
+            background: rgba(139, 0, 139, 0.1);
+            box-shadow: 0 0 15px rgba(139, 0, 139, 0.2);
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 80px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .btn-save {
+            flex: 1;
+            background: linear-gradient(135deg, #8b00ff, #ff1493);
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .btn-save:hover {
+            transform: translateY(-2px);
+        }
+
+        .btn-cancel {
+            flex: 1;
+            background: rgba(100, 100, 100, 0.2);
+            color: #999;
+            border: 1px solid rgba(100, 100, 100, 0.5);
+            padding: 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .field-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        /* ============ 面板 ============ */
+        .panel-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 150;
+            backdrop-filter: blur(5px);
+            overflow-y: auto;
+        }
+
+        .panel-modal.show {
+            display: flex;
+        }
+
+        .panel-content {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border: 2px solid rgba(139, 0, 139, 0.3);
+            border-radius: 15px;
+            max-width: 800px;
+            width: 95%;
+            max-height: 85vh;
+            overflow-y: auto;
+            padding: 30px;
+            box-shadow: 0 0 50px rgba(139, 0, 139, 0.3);
+            margin: auto;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid rgba(139, 0, 139, 0.3);
+        }
+
+        .panel-title {
+            font-size: 28px;
+            background: linear-gradient(135deg, #8b00ff, #ff1493);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+
+        .panel-close {
+            background: rgba(255, 107, 107, 0.2);
+            border: 1px solid rgba(255, 107, 107, 0.5);
+            color: #ff6b6b;
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .category-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            border-bottom: 1px solid rgba(139, 0, 139, 0.2);
+            padding-bottom: 10px;
+        }
+
+        .category-tab {
+            background: rgba(139, 0, 139, 0.1);
+            border: 1px solid rgba(139, 0, 139, 0.3);
+            color: #bb86fc;
+            padding: 8px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 12px;
+        }
+
+        .category-tab.active {
+            background: rgba(139, 0, 139, 0.3);
+            border-color: #8b00ff;
+            box-shadow: 0 0 10px rgba(139, 0, 139, 0.3);
+        }
+
+        .category-tab:hover {
+            background: rgba(139, 0, 139, 0.2);
+        }
+
+        .add-category-btn {
+            background: rgba(139, 0, 139, 0.2);
+            border: 1px dashed rgba(139, 0, 139, 0.5);
+            color: #bb86fc;
+            padding: 8px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 12px;
+        }
+
+        .add-category-btn:hover {
+            background: rgba(139, 0, 139, 0.3);
+        }
+
+        .panel-section {
+            margin-bottom: 20px;
+        }
+
+        .panel-section-title {
+            color: #bb86fc;
+            font-weight: 600;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 12px;
+        }
+
+        .panel-textarea {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(139, 0, 139, 0.3);
+            border-radius: 6px;
+            color: #e0e0e0;
+            padding: 12px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            resize: vertical;
+            min-height: 150px;
+            transition: all 0.3s ease;
+        }
+
+        .panel-textarea:focus {
+            outline: none;
+            border-color: #8b00ff;
+            background: rgba(139, 0, 139, 0.1);
+        }
+
+        .panel-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        /* ============ 响应式 ============ */
+        @media (max-width: 1024px) {
+            .modal-content {
+                grid-template-columns: 1fr;
+            }
+
+            .modal-image img {
+                border-radius: 13px 13px 0 0;
+                height: 300px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .gallery {
+                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            }
+
+            .field-row {
+                grid-template-columns: 1fr;
+            }
+
+            .toolbar-content {
+                flex-wrap: wrap;
+            }
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(139, 0, 139, 0.1);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(139, 0, 139, 0.5);
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="notification" id="notification"></div>
+
+    <!-- 登录 -->
+    <div class="login-container" id="loginContainer">
+        <div class="login-box">
+            <div class="login-title">
+                <h1>⚫ 暗 域 ⚫</h1>
+                <p>N O I R   R E A L M</p>
+                <p style="margin-top: 15px; font-size: 10px; color: #666; letter-spacing: 2px;">角色卡·世界观·提示词 · 一体化管理平台</p>
+            </div>
+            <div class="input-group">
+                <label for="password">ACCESS CODE</label>
+                <input 
+                    type="password" 
+                    id="password" 
+                    placeholder="Enter your code"
+                    autocomplete="off"
+                >
+            </div>
+            <button class="login-btn" onclick="checkPassword()">ENTER SYSTEM</button>
+            <div class="error-message" id="errorMessage">✗ Access Denied</div>
+        </div>
+    </div>
+
+    <!-- 主界面 -->
+    <div class="main-container" id="mainContainer">
+        <div class="toolbar">
+            <div class="toolbar-content">
+                <div class="toolbar-left">
+                    <div class="toolbar-title">⚫ NOIR REALM</div>
+                    <button class="toolbar-btn" onclick="openWorldBook()">📖 WORLD BOOK</button>
+                    <button class="toolbar-btn" onclick="openPrompt()">💭 PROMPTS</button>
+                    <button class="toolbar-btn" onclick="openSettings()">⚙️ SYSTEM</button>
+                </div>
+                <button class="logout-btn" onclick="logout()">LOGOUT</button>
+            </div>
+        </div>
+
+        <div class="content">
+            <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+                <div class="upload-icon">📤</div>
+                <div class="upload-text">UPLOAD CHARACTER CARD</div>
+                <div class="upload-hint">Drag or click to upload PNG files</div>
+                <input type="file" id="fileInput" multiple accept=".png" onchange="handleFileSelect(event)">
+            </div>
+
+            <div class="gallery" id="gallery">
+                <div class="empty-state">
+                    <div class="empty-icon">🖼️</div>
+                    <div>No character cards yet</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 编辑模态框 -->
+    <div class="modal" id="editModal">
+        <div class="modal-content">
+            <div class="modal-image">
+                <img id="modalImage" src="" alt="Character Card">
+            </div>
+            <div class="modal-info">
+                <div class="modal-header">
+                    <div class="modal-title">EDIT CHARACTER</div>
+                    <button class="modal-close" onclick="closeEditModal()">✕</button>
+                </div>
+
+                <form class="edit-form" id="editForm">
+                    <div class="form-group">
+                        <label>CHARACTER NAME</label>
+                        <input type="text" id="characterName" placeholder="Enter character name">
+                    </div>
+
+                    <div class="field-row">
+                        <div class="form-group">
+                            <label>AGE</label>
+                            <input type="text" id="characterAge" placeholder="e.g. 18">
+                        </div>
+                        <div class="form-group">
+                            <label>GENDER</label>
+                            <input type="text" id="characterGender" placeholder="e.g. Female">
+                        </div>
+                    </div>
+
+                    <div class="field-row">
+                        <div class="form-group">
+                            <label>HEIGHT</label>
+                            <input type="text" id="characterHeight" placeholder="e.g. 170cm">
+                        </div>
+                        <div class="form-group">
+                            <label>ROLE/OCCUPATION</label>
+                            <input type="text" id="characterRole" placeholder="e.g. Mage">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>PERSONALITY</label>
+                        <textarea id="characterPersonality" placeholder="Describe personality traits..."></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>BACKGROUND STORY</label>
+                        <textarea id="characterBackground" placeholder="Enter backstory..."></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>SKILLS & ABILITIES</label>
+                        <textarea id="characterSkills" placeholder="Describe abilities..."></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>ADDITIONAL INFO</label>
+                        <textarea id="characterOther" placeholder="Other information..."></textarea>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" class="btn-save" onclick="saveCharacterInfo()">💾 SAVE</button>
+                        <button type="button" class="btn-cancel" onclick="closeEditModal()">✕ CANCEL</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 世界书面板 -->
+    <div class="panel-modal" id="worldBookModal">
+        <div class="panel-content">
+            <div class="panel-header">
+                <div class="panel-title">📖 WORLD BOOK</div>
+                <button class="panel-close" onclick="closePanel('worldBookModal')">✕</button>
+            </div>
+
+            <div class="category-tabs" id="worldBookTabs"></div>
+            <button class="add-category-btn" onclick="addWorldCategory()">+ NEW CATEGORY</button>
+
+            <div class="panel-section" id="worldBookContent"></div>
+
+            <div class="panel-actions">
+                <button class="btn-save" onclick="saveWorldBook()">💾 SAVE</button>
+                <button class="btn-cancel" onclick="closePanel('worldBookModal')">CLOSE</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 提示词面板 -->
+    <div class="panel-modal" id="promptModal">
+        <div class="panel-content">
+            <div class="panel-header">
+                <div class="panel-title">💭 CHARACTER PROMPTS</div>
+                <button class="panel-close" onclick="closePanel('promptModal')">✕</button>
+            </div>
+
+            <div class="category-tabs" id="promptTabs"></div>
+            <button class="add-category-btn" onclick="addPromptCategory()">+ NEW PROMPT</button>
+
+            <div class="panel-section" id="promptContent"></div>
+
+            <div class="panel-actions">
+                <button class="btn-save" onclick="savePrompts()">💾 SAVE</button>
+                <button class="btn-cancel" onclick="closePanel('promptModal')">CLOSE</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 设置面板 -->
+    <div class="panel-modal" id="settingsModal">
+        <div class="panel-content">
+            <div class="panel-header">
+                <div class="panel-title">⚙️ SYSTEM SETTINGS</div>
+                <button class="panel-close" onclick="closePanel('settingsModal')">✕</button>
+            </div>
+
+            <div class="panel-section">
+                <div class="panel-section-title">◆ ABOUT THIS SYSTEM</div>
+                <div style="color: #bbb; line-height: 2; font-size: 12px; letter-spacing: 1px;">
+                    <p>PROJECT NAME: <span style="color: #8b00ff;">NOIR REALM</span></p>
+                    <p>VERSION: <span style="color: #ff1493;">α.1.0</span></p>
+                    <p style="margin-top: 15px;">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</p>
+                    <p style="margin-top: 15px; color: #999;">
+                        一个专为深度角色塑造而生的<br>
+                        极致暗黑化创意管理平台
+                    </p>
+                    <p style="margin-top: 20px; color: #999; font-size: 11px;">
+                        集合了角色卡库、世界观设定、AI提示词管理<br>
+                        提供无缝的创意工作流体验
+                    </p>
+                    <p style="margin-top: 20px; border-top: 1px solid rgba(139, 0, 139, 0.3); padding-top: 15px; color: #999;">
+                        ◆ 核心特性：<br>
+                        • PNG角色卡库管理<br>
+                        • 分类世界观设定系统<br>
+                        • 多角色提示词库<br>
+                        • 本地数据完全存储<br>
+                        • 极简主义暗黑风格UI<br>
+                    </p>
+                    <p style="margin-top: 20px; color: #666; font-size: 10px;">
+                        « Powered by Noir. All data stored locally. »
+                    </p>
+                </div>
+            </div>
+
+            <div class="panel-section">
+                <div class="panel-section-title">◆ DATA MANAGEMENT</div>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <button class="toolbar-btn" onclick="exportData()" style="width: 100%; justify-content: center;">📥 EXPORT ALL DATA</button>
+                    <button style="background: rgba(255, 107, 107, 0.2); border: 1px solid #ff6b6b; color: #ff6b6b; padding: 10px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;" onclick="clearAllData()">🗑️ CLEAR ALL DATA</button>
+                </div>
+            </div>
+
+            <button class="btn-cancel" onclick="closePanel('settingsModal')" style="width: 100%; margin-top: 20px;">CLOSE</button>
+        </div>
+    </div>
+
+    <script>
+        const CORRECT_PASSWORD = '040226';
+        let uploadedFiles = {};
+        let characterData = {};
+        let currentEditingFile = null;
+        let worldBook = { default: '' };
+        let prompts = { default: '' };
+        let currentWorldTab = 'default';
+        let currentPromptTab = 'default';
+
+        // ============ 通知 ============
+        function showNotification(message, duration = 3000) {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.classList.add('show');
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, duration);
+        }
+
+        // ============ 密码验证 ============
+        function checkPassword() {
+            const passwordInput = document.getElementById('password');
+            const errorMessage = document.getElementById('errorMessage');
+            
+            if (passwordInput.value === CORRECT_PASSWORD) {
+                errorMessage.style.display = 'none';
+                document.getElementById('loginContainer').style.display = 'none';
+                document.getElementById('mainContainer').style.display = 'flex';
+                localStorage.setItem('darkAreaAccess', 'true');
+                loadFromLocalStorage();
+            } else {
+                errorMessage.style.display = 'block';
+                passwordInput.value = '';
+                passwordInput.focus();
+                showNotification('✗ ACCESS DENIED');
+            }
+        }
+
+        document.getElementById('password').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') checkPassword();
+        });
+
+        // ============ 退出 ============
+        function logout() {
+            if (confirm('Confirm logout?')) {
+                localStorage.removeItem('darkAreaAccess');
+                document.getElementById('mainContainer').style.display = 'none';
+                document.getElementById('loginContainer').style.display = 'flex';
+                document.getElementById('password').value = '';
+                document.getElementById('password').focus();
+            }
+        }
+
+        // ============ 世界书 ============
+        function openWorldBook() {
+            updateWorldBookUI();
+            document.getElementById('worldBookModal').classList.add('show');
+        }
+
+        function updateWorldBookUI() {
+            const tabsContainer = document.getElementById('worldBookTabs');
+            const contentContainer = document.getElementById('worldBookContent');
+
+            tabsContainer.innerHTML = Object.keys(worldBook).map(cat => `
+                <div class="category-tab ${cat === currentWorldTab ? 'active' : ''}" onclick="switchWorldTab('${cat}')">
+                    ${cat}
+                </div>
+            `).join('');
+
+            contentContainer.innerHTML = `
+                <div class="form-group">
+                    <label>${currentWorldTab.toUpperCase()} SETTINGS</label>
+                    <textarea class="panel-textarea" id="worldBookText" placeholder="Enter world settings...">${worldBook[currentWorldTab] || ''}</textarea>
+                </div>
+            `;
+        }
+
+        function switchWorldTab(tab) {
+            currentWorldTab = tab;
+            updateWorldBookUI();
+        }
+
+        function addWorldCategory() {
+            const name = prompt('Category name:').trim();
+            if (name && !worldBook[name]) {
+                worldBook[name] = '';
+                currentWorldTab = name;
+                updateWorldBookUI();
+            }
+        }
+
+        function saveWorldBook() {
+            worldBook[currentWorldTab] = document.getElementById('worldBookText').value;
+            localStorage.setItem('darkAreaWorldBook', JSON.stringify(worldBook));
+            showNotification('✓ WORLD BOOK SAVED');
+            closePanel('worldBookModal');
+        }
+
+        // ============ 提示词 ============
+        function openPrompt() {
+            updatePromptUI();
+            document.getElementById('promptModal').classList.add('show');
+        }
+
+        function updatePromptUI() {
+            const tabsContainer = document.getElementById('promptTabs');
+            const contentContainer = document.getElementById('promptContent');
+
+            tabsContainer.innerHTML = Object.keys(prompts).map(cat => `
+                <div class="category-tab ${cat === currentPromptTab ? 'active' : ''}" onclick="switchPromptTab('${cat}')">
+                    ${cat}
+                </div>
+            `).join('');
+
+            contentContainer.innerHTML = `
+                <div class="form-group">
+                    <label>${currentPromptTab.toUpperCase()} PROMPT</label>
+                    <textarea class="panel-textarea" id="promptText" placeholder="Enter prompt...">${prompts[currentPromptTab] || ''}</textarea>
+                </div>
+            `;
+        }
+
+        function switchPromptTab(tab) {
+            currentPromptTab = tab;
+            updatePromptUI();
+        }
+
+        function addPromptCategory() {
+            const name = prompt('Prompt name:').trim();
+            if (name && !prompts[name]) {
+                prompts[name] = '';
+                currentPromptTab = name;
+                updatePromptUI();
+            }
+        }
+
+        function savePrompts() {
+            prompts[currentPromptTab] = document.getElementById('promptText').value;
+            localStorage.setItem('darkAreaPrompts', JSON.stringify(prompts));
+            showNotification('✓ PROMPTS SAVED');
+            closePanel('promptModal');
+        }
+
+        // ============ 设置 ============
+        function openSettings() {
+            document.getElementById('settingsModal').classList.add('show');
+        }
+
+        function closePanel(panelId) {
+            document.getElementById(panelId).classList.remove('show');
+        }
+
+        function exportData() {
+            const data = {
+                characters: characterData,
+                worldBook: worldBook,
+                prompts: prompts,
+                exportDate: new Date().toLocaleString('zh-CN')
+            };
+            const json = JSON.stringify(data, null, 2);
+            const blob = new Blob([json], { type: 'application/json; charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'NoirRealm_Backup_' + Date.now() + '.json';
+            a.click();
+            showNotification('✓ DATA EXPORTED');
+        }
+
+        function clearAllData() {
+            if (confirm('⚠️ CONFIRM: This will delete ALL data. Cannot be undone.')) {
+                uploadedFiles = {};
+                characterData = {};
+                worldBook = { default: '' };
+                prompts = { default: '' };
+                localStorage.removeItem('darkAreaData');
+                localStorage.removeItem('darkAreaWorldBook');
+                localStorage.removeItem('darkAreaPrompts');
+                updateGallery();
+                showNotification('✓ ALL DATA CLEARED');
+                closePanel('settingsModal');
+            }
+        }
+
+        // ============ 文件上传 ============
+        function handleFileSelect(e) {
+            const files = e.target.files;
+            if (!files || files.length === 0) return;
+
+            for (let file of files) {
+                if (file.type === 'image/png') {
+                    const reader = new FileReader();
+                    reader.onload = function(event) {
+                        const filename = file.name;
+                        uploadedFiles[filename] = event.target.result;
+                        
+                        if (!characterData[filename]) {
+                            characterData[filename] = {
+                                name: filename.replace('.png', ''),
+                                age: '',
+                                gender: '',
+                                height: '',
+                                role: '',
+                                personality: '',
+                                background: '',
+                                skills: '',
+                                other: ''
+                            };
+                        }
+
+                        updateGallery();
+                        saveToLocalStorage();
+                        showNotification(`✓ ${filename} UPLOADED`);
+                    };
+                    reader.readAsDataURL(file);
+                }
+            }
+            
+            e.target.value = '';
+        }
+
+        // ============ 拖拽 ============
+        const uploadArea = document.getElementById('uploadArea');
+        
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            document.getElementById('fileInput').files = e.dataTransfer.files;
+            handleFileSelect({ target: { files: e.dataTransfer.files } });
+        });
+
+        // ============ 相册 ============
+        function updateGallery() {
+            const gallery = document.getElementById('gallery');
+            const files = Object.keys(uploadedFiles);
+
+            if (files.length === 0) {
+                gallery.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">🖼️</div>
+                        <div>No character cards</div>
+                    </div>
+                `;
+                return;
+            }
+
+            gallery.innerHTML = files.map(filename => {
+                const data = characterData[filename] || {};
+                const displayName = data.name || filename.replace('.png', '');
+                
+                return `
+                    <div class="card-item">
+                        <div class="card-image-container">
+                            <img src="${uploadedFiles[filename]}" class="card-image" alt="${filename}">
+                            <div class="card-overlay">
+                                <button class="card-overlay-btn" onclick="openEditModal('${filename}')">✏️ EDIT</button>
+                            </div>
+                        </div>
+                        <div class="card-info">
+                            <div class="card-name" title="${displayName}">${displayName}</div>
+                            <div class="card-actions">
+                                <button class="card-btn download-btn" onclick="downloadFile('${filename}')">📥</button>
+                                <button class="card-btn delete-btn" onclick="deleteFile('${filename}')">🗑️</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // ============ 编辑 ============
+        function openEditModal(filename) {
+            currentEditingFile = filename;
+            const data = characterData[filename];
+
+            document.getElementById('modalImage').src = uploadedFiles[filename];
+            document.getElementById('characterName').value = data.name || '';
+            document.getElementById('characterAge').value = data.age || '';
+            document.getElementById('characterGender').value = data.gender || '';
+            document.getElementById('characterHeight').value = data.height || '';
+            document.getElementById('characterRole').value = data.role || '';
+            document.getElementById('characterPersonality').value = data.personality || '';
+            document.getElementById('characterBackground').value = data.background || '';
+            document.getElementById('characterSkills').value = data.skills || '';
+            document.getElementById('characterOther').value = data.other || '';
+
+            document.getElementById('editModal').classList.add('show');
+        }
+
+        function closeEditModal() {
+            document.getElementById('editModal').classList.remove('show');
+            currentEditingFile = null;
+        }
+
+        function saveCharacterInfo() {
+            if (!currentEditingFile) return;
+
+            characterData[currentEditingFile] = {
+                name: document.getElementById('characterName').value || currentEditingFile.replace('.png', ''),
+                age: document.getElementById('characterAge').value,
+                gender: document.getElementById('characterGender').value,
+                height: document.getElementById('characterHeight').value,
+                role: document.getElementById('characterRole').value,
+                personality: document.getElementById('characterPersonality').value,
+                background: document.getElementById('characterBackground').value,
+                skills: document.getElementById('characterSkills').value,
+                other: document.getElementById('characterOther').value
+            };
+
+            saveToLocalStorage();
+            updateGallery();
+            closeEditModal();
+            showNotification('✓ CHARACTER SAVED');
+        }
+
+        function downloadFile(filename) {
+            const link = document.createElement('a');
+            link.href = uploadedFiles[filename];
+            link.download = filename;
+            link.click();
+        }
+
+        function deleteFile(filename) {
+            if (confirm(`Delete "${filename}"?`)) {
+                delete uploadedFiles[filename];
+                delete characterData[filename];
+                updateGallery();
+                saveToLocalStorage();
+                showNotification(`✓ DELETED`);
+            }
+        }
+
+        // ============ 存储 ============
+        function saveToLocalStorage() {
+            try {
+                localStorage.setItem('darkAreaData', JSON.stringify(characterData));
+            } catch (e) {
+                console.error('Save failed:', e);
+            }
+        }
+
+        function loadFromLocalStorage() {
+            try {
+                const saved = localStorage.getItem('darkAreaData');
+                if (saved) {
+                    characterData = JSON.parse(saved);
+                    updateGallery();
+                }
+                
+                const wb = localStorage.getItem('darkAreaWorldBook');
+                if (wb) worldBook = JSON.parse(wb);
+                
+                const pr = localStorage.getItem('darkAreaPrompts');
+                if (pr) prompts = JSON.parse(pr);
+            } catch (e) {
+                console.error('Load failed:', e);
+            }
+        }
+
+        // ============ 模态框关闭 ============
+        document.getElementById('editModal').addEventListener('click', function(e) {
+            if (e.target === this) closeEditModal();
+        });
+
+        document.querySelectorAll('.panel-modal').forEach(modal => {
+            modal.addEventListener('click', function(e) {
+                if (e.target === this) closePanel(this.id);
+            });
+        });
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeEditModal();
+                document.querySelectorAll('.panel-modal.show').forEach(m => closePanel(m.id));
+            }
+        });
+
+        // ============ 初始化 ============
+        window.addEventListener('load', function() {
+            if (localStorage.getItem('darkAreaAccess') === 'true') {
+                document.getElementById('loginContainer').style.display = 'none';
+                document.getElementById('mainContainer').style.display = 'flex';
+                loadFromLocalStorage();
+            } else {
+                document.getElementById('password').focus();
+            }
+        });
+
+        window.addEventListener('beforeunload', () => saveToLocalStorage());
+    </script>
+</body>
+</html>
+```
+
+---
+
+## 🎯 主要改进：
+
+### ✅ **移除了OCR识别**
+- 改为**手动输入模式**，完全避免识别错误
+- 让用户灵活编辑所有信息
+
+### 📚 **世界书分类系统**
+- 按**分类标签页**管理多个世界设定
+- 可添加无限个分类（"主世界"、"支线"等）
+- 每个分类独立保存
+
+### 💭 **提示词分类管理**
+- 为每个**角色单独创建**提示词
+- 支持多提示词模板
+- 便于快速切换
+
+### 🎭 **高级设置面板**
+- 项目介绍装逼文案
+- 版本号、核心特性说明
+- 数据导出、备份功能
+- 专业的"Noir Realm"品牌风格
+
+### 🎨 **UI升级**
+- 全英文高端氛围
+- 极简主义黑暗风格
+- 分类标签页设计
+- 更好的视觉层级
+
+**使用步骤**：
+1. 密码 `040226` 进入
+2. 上传PNG角色卡
+3. 点击编辑，手动填写信息
+4. 通过工具栏管理世界书、提示词
+5. 在设置中导出数据
+
+现在完全避免了OCR问题！💎✨
